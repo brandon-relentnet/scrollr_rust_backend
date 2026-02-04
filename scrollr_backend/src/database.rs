@@ -1,9 +1,22 @@
 use std::{env, time::Duration};
 use anyhow::{Context, Result};
-use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
+use sqlx::postgres::{PgConnectOptions, PgPoolOptions};
 pub use sqlx::PgPool;
 
 pub async fn initialize_pool() -> Result<PgPool> {
+    let pool_options = PgPoolOptions::new()
+        .max_connections(50)
+        .min_connections(6)
+        .idle_timeout(Duration::from_millis(30_000));
+
+    if let Ok(database_url) = env::var("DATABASE_URL") {
+        let pool = pool_options
+            .connect(&database_url)
+            .await
+            .context("Failed to connect to the PostgreSQL database via DATABASE_URL")?;
+        return Ok(pool);
+    }
+
     let get_env_var = |key: &str| -> Result<String> {
         env::var(key).with_context(|| format!("Missing environment variable: {}", key))
     };
@@ -22,18 +35,12 @@ pub async fn initialize_pool() -> Result<PgPool> {
 
     let port: u16 = port_str.parse().context("DB_PORT must be a valid u16 integer")?;
 
-    let pool_options = PgPoolOptions::new()
-        .max_connections(50)
-        .min_connections(6)
-        .idle_timeout(Duration::from_millis(30_000));
-
     let connect_options = PgConnectOptions::new()
         .host(host)
         .port(port)
         .username(&user)
         .password(&password)
-        .database(&database)
-        .ssl_mode(PgSslMode::Require);
+        .database(&database);
 
     let pool = pool_options
         .connect_with(connect_options)

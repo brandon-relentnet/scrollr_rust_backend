@@ -1,4 +1,4 @@
-use std::{env, net::{IpAddr, Ipv4Addr, SocketAddr}, path::PathBuf, sync::Arc, time::{Duration, Instant}};
+use std::{env, net::{IpAddr, Ipv4Addr, SocketAddr}, path::PathBuf, sync::Arc};
 
 use axum::{Json, Router, extract::{Path, Query, State}, http::{HeaderMap, HeaderValue, StatusCode, header::{self, REFERRER_POLICY}}, response::{Html, IntoResponse, Redirect, Response}, routing::get};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
@@ -14,6 +14,7 @@ use tokio_rustls_acme::{AcmeConfig, caches::DirCache, tokio_rustls::rustls::Serv
 use tower_http::{cors::{self, AllowOrigin, CorsLayer}, set_header::SetRequestHeaderLayer};
 use scrollr_backend::log::{error, info, init_async_logger, warn};
 use yahoo_fantasy::{api::{debug_league_stats, get_league_standings, get_matchups, get_team_roster, get_user_leagues}, exchange_for_token, stats::{BasketballStats, FootballStats, HockeyStats, StatDecode}, types::{LeagueStandings, Roster, Tokens}, yahoo};
+use redis::Cmd;
 
 #[tokio::main]
 async fn main() {
@@ -143,10 +144,24 @@ async fn get_yahoo_handler(State(web_state): State<ServerState>) -> Response {
         }
     };
 
-    // Store CSRF token with timestamp
+    // Store CSRF token in Redis with 10 minute expiration
     {
-        let mut csrf_tokens = web_state.csrf_tokens.lock().await;
-        csrf_tokens.insert(csrf_token.clone(), Instant::now());
+        let mut conn = match web_state.redis_pool.get().await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to get Redis connection: {}", e);
+                return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
+            }
+        };
+
+        let key = format!("csrf:{}", csrf_token);
+        let _: () = match Cmd::set_ex(&key, "1", 600).query_async(&mut *conn).await {
+            Ok(v) => v,
+            Err(e) => {
+                error!("Failed to store CSRF token in Redis: {}", e);
+                return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
+            }
+        };
     }
 
     let mut response = Redirect::temporary(&redirect_url).into_response();
@@ -166,20 +181,31 @@ struct CodeResponse {
 }
 
 async fn yahoo_callback(Query(tokens): Query<CodeResponse>, State(web_state): State<ServerState>, jar: CookieJar) -> Response {
-    // Validate CSRF token
+    // Validate CSRF token via Redis
     {
-        let mut csrf_tokens = web_state.csrf_tokens.lock().await;
-
-        // Check if token exists
-        if let Some(created_at) = csrf_tokens.remove(&tokens.state) {
-            // Check if token is not expired (10 minutes)
-            let now = Instant::now();
-            if now.duration_since(created_at) > Duration::from_secs(600) {
-                return ErrorCodeResponse::new(StatusCode::BAD_REQUEST, "CSRF token expired");
+        let mut conn = match web_state.redis_pool.get().await {
+            Ok(c) => c,
+            Err(e) => {
+                error!("Failed to get Redis connection: {}", e);
+                return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
             }
-        } else {
-            error!("Invalid CSRF token received: {}", tokens.state);
-            return ErrorCodeResponse::new(StatusCode::BAD_REQUEST, "Invalid CSRF token");
+        };
+
+        let key = format!("csrf:{}", tokens.state);
+        let exists: bool = match Cmd::del(&key).query_async(&mut *conn).await {
+            Ok(count) => {
+                let count: i32 = count;
+                count > 0
+            },
+            Err(e) => {
+                error!("Failed to check/delete CSRF token in Redis: {}", e);
+                return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Internal server error");
+            }
+        };
+
+        if !exists {
+            error!("Invalid or expired CSRF token received: {}", tokens.state);
+            return ErrorCodeResponse::new(StatusCode::BAD_REQUEST, "Invalid or expired CSRF token");
         }
     }
 

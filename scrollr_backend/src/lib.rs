@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, sync::Arc, time::{Duration, Instant}};
+use std::{env, sync::Arc};
 
 use axum::{Json, http::{HeaderMap, HeaderValue, StatusCode, header::AUTHORIZATION}, response::{IntoResponse, Response}};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
@@ -8,9 +8,15 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use crate::{database::{PgPool, initialize_pool}, log::warn};
 use yahoo_fantasy::{api::Client, types::Tokens, YahooHealth};
+use deadpool_redis::{Config, Pool, Runtime};
 
 pub mod log;
 pub mod database;
+
+#[derive(Serialize)]
+pub struct StandingsResponse {
+    pub standings: Vec<yahoo_fantasy::types::LeagueStandings>,
+}
 
 #[derive(Serialize)]
 pub struct ErrorCodeResponse {
@@ -38,10 +44,10 @@ pub struct SchedulePayload {
 #[derive(Clone)]
 pub struct ServerState {
     pub db_pool: Arc<PgPool>,
+    pub redis_pool: Pool,
     pub client_id: String,
     pub client_secret: SecretString,
     pub yahoo_callback: String,
-    pub csrf_tokens: Arc<Mutex<HashMap<String, Instant>>>,
     pub client: Client,
 
     pub yahoo_health: Arc<Mutex<YahooHealth>>,
@@ -49,8 +55,13 @@ pub struct ServerState {
 
 impl ServerState {
     pub async fn new() -> Self {
+        let redis_url = env::var("REDIS_URL").expect("REDIS_URL must be set in .env");
+        let redis_cfg = Config::from_url(redis_url);
+        let redis_pool = redis_cfg.create_pool(Some(Runtime::Tokio1)).expect("Failed to create Redis pool");
+
         Self {
             db_pool: Arc::new(initialize_pool().await.expect("Failed to initialize database pool")),
+            redis_pool,
             client_id: env::var("YAHOO_CLIENT_ID").expect("Yahoo client ID must be set in .env"),
             client_secret: SecretString::new(
                 env::var("YAHOO_CLIENT_SECRET")
@@ -58,19 +69,14 @@ impl ServerState {
                     .into_boxed_str()
             ),
             yahoo_callback: format!("https://{}{}", env::var("DOMAIN_NAME").unwrap(), env::var("YAHOO_CALLBACK_URL").expect("Yahoo callback URL must be set in .env")),
-            csrf_tokens: Arc::new(Mutex::new(HashMap::new())),
             client: Client::new(),
 
             yahoo_health: Arc::new(Mutex::new(YahooHealth::new())),
         }
     }
 
-    /// Clean up expired CSRF tokens (older than 10 minutes)
-    pub async fn cleanup_expired_csrf_tokens(&self) {
-        let mut tokens = self.csrf_tokens.lock().await;
-        let now = Instant::now();
-        tokens.retain(|_, created_at| now.duration_since(*created_at) < Duration::from_secs(600));
-    }
+    /// Redis handles expiration automatically via TTL
+    pub async fn cleanup_expired_csrf_tokens(&self) {}
 }
 
 #[derive(Debug, Deserialize, Clone)]
