@@ -15,6 +15,5 @@ RUN apt-get update && apt-get install -y ca-certificates libssl-dev && rm -rf /v
 
 COPY --from=builder /app/target/release/scrollr_backend .
 COPY --from=builder /app/.env .
-COPY --from=builder /app/configs ./configs
 
 CMD ["./scrollr_backend"]
