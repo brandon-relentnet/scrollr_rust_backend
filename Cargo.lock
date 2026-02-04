@@ -677,6 +677,8 @@ name = "finance_service"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
+ "dotenv",
  "futures-util",
  "reqwest",
  "serde",
@@ -2147,14 +2149,12 @@ dependencies = [
  "axum-extra",
  "axum-server",
  "dotenv",
- "finance_service",
  "futures-util",
  "rcgen 0.13.2",
  "rustls",
  "secrecy",
  "serde",
  "serde_json",
- "sports_service",
  "tokio",
  "tokio-rustls-acme",
  "tower-http",
@@ -2359,7 +2359,9 @@ dependencies = [
 name = "sports_service"
 version = "0.1.0"
 dependencies = [
+ "axum",
  "chrono",
+ "dotenv",
  "reqwest",
  "serde",
  "serde_json",

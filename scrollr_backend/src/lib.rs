@@ -2,14 +2,12 @@ use std::{collections::HashMap, env, sync::Arc, time::{Duration, Instant}};
 
 use axum::{Json, http::{HeaderMap, HeaderValue, StatusCode, header::AUTHORIZATION}, response::{IntoResponse, Response}};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
-use finance_service::types::FinanceHealth;
 use secrecy::SecretString;
 pub use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use utils::{database::{PgPool, initialize_pool}, log::warn};
 use yahoo_fantasy::{api::Client, types::Tokens, YahooHealth};
-use sports_service::SportsHealth;
 
 #[derive(Serialize)]
 pub struct ErrorCodeResponse {
@@ -43,8 +41,6 @@ pub struct ServerState {
     pub csrf_tokens: Arc<Mutex<HashMap<String, Instant>>>,
     pub client: Client,
 
-    pub finance_health: Arc<Mutex<FinanceHealth>>,
-    pub sports_health: Arc<Mutex<SportsHealth>>,
     pub yahoo_health: Arc<Mutex<YahooHealth>>,
 }
 
@@ -62,8 +58,6 @@ impl ServerState {
             csrf_tokens: Arc::new(Mutex::new(HashMap::new())),
             client: Client::new(),
 
-            finance_health: Arc::new(Mutex::new(FinanceHealth::new())),
-            sports_health: Arc::new(Mutex::new(SportsHealth::new())),
             yahoo_health: Arc::new(Mutex::new(YahooHealth::new())),
         }
     }

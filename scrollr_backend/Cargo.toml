@@ -18,7 +18,5 @@ tower-http = { version = "0.6", features = ["set-header", "cors"] }
 secrecy = { version = "0.10", features = ["serde"] }
 rcgen = "0.13"
 
-finance_service = { path = "../finance_service" }
-sports_service = { path = "../sports_service" }
 yahoo_fantasy = { path = "../yahoo_fantasy" }
 utils = { path = "../utils" }

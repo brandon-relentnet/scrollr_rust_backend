@@ -1,20 +1,18 @@
-use std::{env, fs::{self}, net::{IpAddr, Ipv4Addr, SocketAddr}, path::PathBuf, sync::Arc, time::{Duration, Instant}};
+use std::{env, net::{IpAddr, Ipv4Addr, SocketAddr}, path::PathBuf, sync::Arc, time::{Duration, Instant}};
 
-use axum::{Json, Router, extract::{Path, Query, State}, http::{HeaderMap, HeaderValue, StatusCode, header::{self, REFERRER_POLICY}}, response::{Html, IntoResponse, Redirect, Response}, routing::{get, post}};
+use axum::{Json, Router, extract::{Path, Query, State}, http::{HeaderMap, HeaderValue, StatusCode, header::{self, REFERRER_POLICY}}, response::{Html, IntoResponse, Redirect, Response}, routing::get};
 use axum_extra::extract::{CookieJar, cookie::{Cookie, SameSite}};
 use axum_server::tls_rustls::RustlsConfig;
-use finance_service::{start_finance_services, types::FinanceState, update_all_previous_closes};
 use futures_util::{StreamExt, future::join_all};
 use dotenv::dotenv;
 use rcgen::generate_simple_self_signed;
-use scrollr_backend::{ErrorCodeResponse, RefreshBody, SchedulePayload, ServerState, get_access_token, update_tokens};
+use scrollr_backend::{ErrorCodeResponse, RefreshBody, ServerState, get_access_token, update_tokens};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use sports_service::{poll_sports, start_sports_service};
 use tokio_rustls_acme::{AcmeConfig, caches::DirCache, tokio_rustls::rustls::ServerConfig};
 use tower_http::{cors::{self, AllowOrigin, CorsLayer}, set_header::SetRequestHeaderLayer};
-use utils::{database::sports::LeagueConfigs, log::{error, info, init_async_logger, warn}};
+use utils::log::{error, info, init_async_logger, warn};
 use yahoo_fantasy::{api::{debug_league_stats, get_league_standings, get_matchups, get_team_roster, get_user_leagues}, exchange_for_token, stats::{BasketballStats, FootballStats, HockeyStats, StatDecode}, types::{LeagueStandings, Roster, Tokens}, yahoo};
 
 #[tokio::main]
@@ -35,13 +33,7 @@ async fn main() {
 
     let web_state = ServerState::new().await;
 
-    handles.push(tokio::spawn(start_finance_services(web_state.db_pool.clone(), Arc::clone(&web_state.finance_health))));
-    handles.push(tokio::spawn(start_sports_service(web_state.db_pool.clone(), Arc::clone(&web_state.sports_health))));
-
     let app = Router::new()
-        .route("/", post(handler))
-        .route("/finance/health", get(finance_health))
-        .route("/sports/health", get(sports_health))
         .route("/yahoo/health", get(yahoo_health))
         .route("/yahoo/start", get(get_yahoo_handler))
         .route("/yahoo/callback", get(yahoo_callback))
@@ -94,8 +86,8 @@ async fn main() {
         tokio::spawn(async move {
             loop {
                 match state.next().await.expect("ACME Error") {
-                    Ok(ok) => info!("event: {ok:?}"),
-                    Err(err) => error!("error: {err:?}"),
+                    Ok(ok) => info!("event: {:?}", ok),
+                    Err(err) => error!("error: {:?}", err),
                 }
             }
         });
@@ -133,57 +125,6 @@ async fn main() {
     println!("Closing...")
 }
 
-async fn handler(State(web_state): State<ServerState>, Json(payload): Json<SchedulePayload>) {
-    let pool = web_state.db_pool;
-    match payload.schedule_type.as_str() {
-        "finance" => {
-            let state = FinanceState::new(pool);
-
-            info!("Running daily finance job...");
-            update_all_previous_closes(state).await;
-            info!("Previous closes updated!");
-        }
-
-        "sports" => {
-            let mut leagues = Vec::new();
-
-            let file_contents = match fs::read_to_string("./configs/leagues.json") {
-                Ok(contents) => contents,
-                Err(e) => {
-                    error!("Failed to read leagues config file: {e}");
-                    return;
-                }
-            };
-
-            let leagues_to_ingest: Vec<LeagueConfigs> = match serde_json::from_str(&file_contents) {
-                Ok(leagues) => leagues,
-                Err(e) => {
-                    error!("Failed to parse leagues config JSON: {e}");
-                    return;
-                }
-            };
-
-            // if the payload is empty this is a request that each sport be updated
-            if payload.data.is_empty() {
-                info!("Starting update for sports calendar");
-
-                leagues = leagues_to_ingest;
-            } else {
-                info!("Starting frequent polling for the following leagues {:?}", payload.data);
-
-                for league in leagues_to_ingest {
-                    if payload.data.contains(&league.name) {
-                        leagues.push(league);
-                    }
-                }
-            }
-
-            poll_sports(leagues, &pool, Arc::clone(&web_state.sports_health)).await;
-        }
-        _ => warn!("Unexpected POST payload {}", payload.schedule_type),
-    }
-}
-
 #[axum::debug_handler]
 async fn get_yahoo_handler(State(web_state): State<ServerState>) -> Response {
     // Clean up expired CSRF tokens
@@ -197,7 +138,7 @@ async fn get_yahoo_handler(State(web_state): State<ServerState>) -> Response {
     let (redirect_url, csrf_token) = match yahoo(client_id, client_secret, callback_url).await {
         Ok(data) => data,
         Err(e) => {
-            error!("Yahoo auth initiation failed: {e}");
+            error!("Yahoo auth initiation failed: {}", e);
             return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, "Failed to initiate authentication");
         }
     };
@@ -284,21 +225,20 @@ async fn yahoo_callback(Query(tokens): Query<CodeResponse>, State(web_state): St
         .build();
 
     let html_content = format!(
-        r#"
-            <!doctype html><html><head><meta charset="utf-8"><title>Auth Complete</title></head>
+        r###"<!doctype html><html><head><meta charset="utf-8"><title>Auth Complete</title></head>
             <body style="font-family: ui-sans-serif, system-ui;">
                 <script>
-                (function() {{
-                    try {{
-                        if (window.opener) {{
+                (function() {{ 
+                    try {{ 
+                        if (window.opener) {{ 
                             // POST MESSAGE: Sending the access token back to the main app window
                             window.opener.postMessage({{ 
                                 type: 'yahoo-auth', 
-                                accessToken: {0},
-                                refreshToken: {1}
+                                accessToken: {{0}},
+                                refreshToken: {{1}}
                             }}, '*'); 
                         }}
-                    }} catch(e) {{
+                    }} catch(e) {{ 
                         console.error("Error sending token via postMessage:", e);
                     }}
                     // Always close the popup window after a brief delay
@@ -306,8 +246,7 @@ async fn yahoo_callback(Query(tokens): Query<CodeResponse>, State(web_state): St
                 }})();
                 </script>
                 <p>Authentication successful. You can close this window.</p>
-            </body></html>
-        "#,
+            </body></html>"###,
         serde_json::to_string(&access_token).unwrap_or_else(|_| "\"error\"".to_string()),
         serde_json::to_string(&refresh_token).unwrap_or_else(|_| "\"error\"".to_string()),
     );
@@ -332,9 +271,9 @@ async fn user_leagues(jar: CookieJar, State(web_state): State<ServerState>, head
     let response = get_user_leagues(&initial_tokens, web_state.client).await;
 
     if let Err(e) = response {
-        error!("Error fetching leagues for user: {e}");
-        web_state.yahoo_health.lock().await.record_error(format!("get_user_leagues error: {e}"));
-        return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch leagues: {e}").as_str());
+        error!("Error fetching leagues for user: {}", e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_user_leagues error: {{}}", e));
+        return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch leagues: {{}}", e).as_str());
     }
 
     let (leagues, new_tokens) = response.unwrap();
@@ -355,8 +294,8 @@ async fn league_standings(Path(league_key): Path<String>, jar: CookieJar, State(
     let response = get_league_standings(&league_key, web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching standings for {league_key}: {e}");
-        web_state.yahoo_health.lock().await.record_error(format!("get_league_standings error for {}: {}", league_key, e));
+        error!("Error fetching standings for {}: {{}}", league_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_league_standings error for {{}}: {{}}", league_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -449,7 +388,7 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
             };
 
             if let Some(sport) = correct_sport {
-                warn!("Sport mismatch detected. Auto-retrying with correct sport: {}, team_key: {}", sport, team_key);
+                warn!("Sport mismatch detected. Auto-retrying with correct sport: {{}}, team_key: {{}}", sport, team_key);
 
                 // Retry with the correct sport
                 let retry_result = match sport {
@@ -480,8 +419,8 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
                         response
                     }
                     Err(retry_err) => {
-                        error!("Retry failed for {team_key} with correct sport {sport}: {retry_err}");
-                        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster retry failed for {}: {}", team_key, retry_err));
+                        error!("Retry failed for {{}} with correct sport {{}}: {{}}", team_key, sport, retry_err);
+                        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster retry failed for {{}}: {{}}", team_key, retry_err));
                         StatusCode::INTERNAL_SERVER_ERROR.into_response()
                     }
                 };
@@ -494,8 +433,8 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
             );
         }
 
-        error!("Error fetching roster for {team_key}: {e}");
-        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster error for {}: {}", team_key, e));
+        error!("Error fetching roster for {{}}: {{}}", team_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster error for {{}}: {{}}", team_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -512,7 +451,7 @@ async fn get_debug_league_stats(jar: CookieJar, State(web_state): State<ServerSt
     let response = debug_league_stats(web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching league_stats: {e}");
+        error!("Error fetching league_stats: {{}}", e);
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -521,18 +460,6 @@ async fn get_debug_league_stats(jar: CookieJar, State(web_state): State<ServerSt
     let updated_cookies = update_tokens(&mut headers, jar, new_tokens, &initial_tokens.access_type);
 
     (headers, updated_cookies, Json(stats)).into_response()
-}
-
-async fn finance_health(State(web_state): State<ServerState>) -> impl IntoResponse {
-    let health = web_state.finance_health.lock().await.get_health();
-
-    Json(health)
-}
-
-async fn sports_health(State(web_state): State<ServerState>) -> impl IntoResponse {
-    let health = web_state.sports_health.lock().await.get_health();
-
-    Json(health)
 }
 
 async fn yahoo_health(State(web_state): State<ServerState>) -> impl IntoResponse {
@@ -549,8 +476,8 @@ async fn team_matchups(Path(team_key): Path<String>, jar: CookieJar, State(web_s
     let response = get_matchups(&team_key, web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching matchups for {team_key}: {e}");
-        web_state.yahoo_health.lock().await.record_error(format!("get_matchups error for {}: {}", team_key, e));
+        error!("Error fetching matchups for {{}}: {{}}", team_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_matchups error for {{}}: {{}}", team_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
