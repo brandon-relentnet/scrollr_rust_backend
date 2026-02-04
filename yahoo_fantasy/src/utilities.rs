@@ -1,4 +1,4 @@
-use utils::log::info;
+use log::info;
 
 use crate::xml_settings::Stat;
 use crate::stats::invalidate_stat_cache;

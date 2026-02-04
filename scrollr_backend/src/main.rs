@@ -12,14 +12,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio_rustls_acme::{AcmeConfig, caches::DirCache, tokio_rustls::rustls::ServerConfig};
 use tower_http::{cors::{self, AllowOrigin, CorsLayer}, set_header::SetRequestHeaderLayer};
-use utils::log::{error, info, init_async_logger, warn};
+use scrollr_backend::log::{error, info, init_async_logger, warn};
 use yahoo_fantasy::{api::{debug_league_stats, get_league_standings, get_matchups, get_team_roster, get_user_leagues}, exchange_for_token, stats::{BasketballStats, FootballStats, HockeyStats, StatDecode}, types::{LeagueStandings, Roster, Tokens}, yahoo};
 
 #[tokio::main]
 async fn main() {
     dotenv().ok();
     rustls::crypto::ring::default_provider().install_default().expect("Failed to install rustls crypto provider");
-    let mut handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
+    let handles: Vec<tokio::task::JoinHandle<()>> = Vec::new();
 
     match init_async_logger("./logs") {
         Ok(_) => info!("Async logging initialized successfully"),
@@ -64,7 +64,7 @@ async fn main() {
     let ipv4_addr = Ipv4Addr::from([0, 0, 0, 0]);
     let addr = SocketAddr::new(IpAddr::V4(ipv4_addr), 8443);
 
-    info!("Listening on address: {addr}");
+    info!("Listening on address: {}", addr);
     let domain_name = env::var("DOMAIN_NAME").expect("DOMAIN_NAME must be set");
 
     if acme_enabled {
@@ -234,8 +234,8 @@ async fn yahoo_callback(Query(tokens): Query<CodeResponse>, State(web_state): St
                             // POST MESSAGE: Sending the access token back to the main app window
                             window.opener.postMessage({{ 
                                 type: 'yahoo-auth', 
-                                accessToken: {{0}},
-                                refreshToken: {{1}}
+                                accessToken: {0},
+                                refreshToken: {1}
                             }}, '*'); 
                         }}
                     }} catch(e) {{ 
@@ -272,8 +272,8 @@ async fn user_leagues(jar: CookieJar, State(web_state): State<ServerState>, head
 
     if let Err(e) = response {
         error!("Error fetching leagues for user: {}", e);
-        web_state.yahoo_health.lock().await.record_error(format!("get_user_leagues error: {{}}", e));
-        return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch leagues: {{}}", e).as_str());
+        web_state.yahoo_health.lock().await.record_error(format!("get_user_leagues error: {}", e));
+        return ErrorCodeResponse::new(StatusCode::INTERNAL_SERVER_ERROR, format!("Failed to fetch leagues: {}", e).as_str());
     }
 
     let (leagues, new_tokens) = response.unwrap();
@@ -294,8 +294,8 @@ async fn league_standings(Path(league_key): Path<String>, jar: CookieJar, State(
     let response = get_league_standings(&league_key, web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching standings for {}: {{}}", league_key, e);
-        web_state.yahoo_health.lock().await.record_error(format!("get_league_standings error for {{}}: {{}}", league_key, e));
+        error!("Error fetching standings for {}: {}", league_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_league_standings error for {}: {}", league_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -388,7 +388,7 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
             };
 
             if let Some(sport) = correct_sport {
-                warn!("Sport mismatch detected. Auto-retrying with correct sport: {{}}, team_key: {{}}", sport, team_key);
+                warn!("Sport mismatch detected. Auto-retrying with correct sport: {}, team_key: {}", sport, team_key);
 
                 // Retry with the correct sport
                 let retry_result = match sport {
@@ -419,8 +419,8 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
                         response
                     }
                     Err(retry_err) => {
-                        error!("Retry failed for {{}} with correct sport {{}}: {{}}", team_key, sport, retry_err);
-                        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster retry failed for {{}}: {{}}", team_key, retry_err));
+                        error!("Retry failed for {} with correct sport {}: {}", team_key, sport, retry_err);
+                        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster retry failed for {}: {}", team_key, retry_err));
                         StatusCode::INTERNAL_SERVER_ERROR.into_response()
                     }
                 };
@@ -433,8 +433,8 @@ async fn team_roster(Query(query): Query<RosterQuery>, Path(team_key): Path<Stri
             );
         }
 
-        error!("Error fetching roster for {{}}: {{}}", team_key, e);
-        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster error for {{}}: {{}}", team_key, e));
+        error!("Error fetching roster for {}: {}", team_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_team_roster error for {}: {}", team_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -451,7 +451,7 @@ async fn get_debug_league_stats(jar: CookieJar, State(web_state): State<ServerSt
     let response = debug_league_stats(web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching league_stats: {{}}", e);
+        error!("Error fetching league_stats: {}", e);
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 
@@ -476,8 +476,8 @@ async fn team_matchups(Path(team_key): Path<String>, jar: CookieJar, State(web_s
     let response = get_matchups(&team_key, web_state.client, &initial_tokens).await;
 
     if let Err(e) = response {
-        error!("Error fetching matchups for {{}}: {{}}", team_key, e);
-        web_state.yahoo_health.lock().await.record_error(format!("get_matchups error for {{}}: {{}}", team_key, e));
+        error!("Error fetching matchups for {}: {}", team_key, e);
+        web_state.yahoo_health.lock().await.record_error(format!("get_matchups error for {}: {}", team_key, e));
         return StatusCode::INTERNAL_SERVER_ERROR.into_response();
     }
 

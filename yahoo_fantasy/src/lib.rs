@@ -2,7 +2,7 @@ use std::error::Error;
 
 use oauth2::{AuthUrl, AuthorizationCode, ClientId, ClientSecret, CsrfToken, RedirectUrl, RefreshToken, Scope, TokenResponse, TokenUrl, basic::BasicClient, reqwest::Client};
 use secrecy::{SecretString, ExposeSecret};
-use utils::log::error;
+use log::error;
 
 use crate::types::Tokens;
 

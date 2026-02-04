@@ -3,7 +3,7 @@ use std::{collections::HashMap, env, fs, pin::Pin, sync::Arc, time::{Duration, I
 use reqwest::{Client, header::{HeaderMap, HeaderValue}};
 use serde::{Deserialize, Serialize};
 use tokio::time::Sleep;
-use utils::database::PgPool;
+use crate::database::PgPool;
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct TradeUpdate {

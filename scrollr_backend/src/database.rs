@@ -1,14 +1,7 @@
 use std::{env, time::Duration};
-
 use anyhow::{Context, Result};
 use sqlx::postgres::{PgConnectOptions, PgPoolOptions, PgSslMode};
 pub use sqlx::PgPool;
-
-#[cfg(feature = "finance")]
-pub mod finance;
-
-#[cfg(feature = "sports")]
-pub mod sports;
 
 pub async fn initialize_pool() -> Result<PgPool> {
     let get_env_var = |key: &str| -> Result<String> {

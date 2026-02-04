@@ -1,7 +1,7 @@
 use std::error::Error;
 use secrecy::SecretString;
 use serde::Deserialize;
-use utils::log::error;
+use log::error;
 
 use crate::exchange_refresh;
 

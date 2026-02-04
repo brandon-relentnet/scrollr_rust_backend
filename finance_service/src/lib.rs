@@ -3,12 +3,15 @@ use std::{sync::Arc, time::Duration};
 use futures_util::future::join_all;
 use reqwest::Client;
 use tokio::{sync::Mutex, time::{self, sleep}};
-use utils::{database::{PgPool, finance::{create_tables, insert_symbol, update_previous_close, update_trade}}, log::{debug, error, info, warn}};
+use crate::log::{debug, error, info, warn};
+use crate::database::{PgPool, create_tables, insert_symbol, update_previous_close, update_trade};
 
 use crate::{types::{FinanceHealth, FinanceState, QuoteResponse}, websocket::connect};
 
 pub mod types;
 mod websocket;
+pub mod log;
+pub mod database;
 
 /// Broadly starts all finance related services and initialization.
 pub async fn start_finance_services(pool: Arc<PgPool>, health_state: Arc<Mutex<FinanceHealth>>) {

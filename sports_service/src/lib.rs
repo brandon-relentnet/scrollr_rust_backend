@@ -2,13 +2,14 @@ use std::{fs, sync::Arc};
 use chrono::NaiveDateTime;
 use reqwest::Client;
 use tokio::sync::Mutex;
-use utils::{database::{PgPool, sports::{CleanedData, Team, clear_tables, create_tables, get_live_games, upsert_game}}, log::{info, warn}};
-
-use utils::database::sports::LeagueConfigs;
+use crate::log::{info, warn};
+use crate::database::{PgPool, LeagueConfigs, CleanedData, Team, clear_tables, create_tables, get_live_games, upsert_game};
 
 use crate::types::ScoreboardResponse;
 
 mod types;
+pub mod log;
+pub mod database;
 
 pub use types::SportsHealth;
 

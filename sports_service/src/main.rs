@@ -2,13 +2,12 @@ use axum::{routing::{get, post}, Router, Json, extract::State, http::StatusCode}
 use dotenv::dotenv;
 use std::{sync::Arc, fs};
 use tokio::sync::Mutex;
-use utils::{log::init_async_logger, database::initialize_pool, database::sports::LeagueConfigs};
-use sports_service::{start_sports_service, poll_sports, SportsHealth};
+use sports_service::{start_sports_service, poll_sports, SportsHealth, log::init_async_logger, database::initialize_pool, database::PgPool, database::LeagueConfigs};
 
 #[derive(Clone)]
 struct AppState {
     health: Arc<Mutex<SportsHealth>>,
-    pool: Arc<utils::database::PgPool>,
+    pool: Arc<PgPool>,
 }
 
 #[tokio::main]

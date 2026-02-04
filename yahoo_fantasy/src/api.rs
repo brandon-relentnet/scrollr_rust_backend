@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 pub use oauth2::{http::header, reqwest::Client};
 use secrecy::{ExposeSecret, SecretString};
-use utils::log::{error, info};
+use log::{error, info};
 
 use crate::{debug::LeagueStats, error::YahooError, stats::StatDecode, types::{LeagueStandings, Leagues, Matchup, MatchupTeam, Matchups, Roster, Tokens, UserLeague}, utilities::write_stat_pairs_to_file, xml_leagues, xml_matchups, xml_roster, xml_settings::{self, Stat}, xml_standings};
 

@@ -2,13 +2,12 @@ use axum::{routing::{get, post}, Router, Json, extract::State, http::StatusCode}
 use dotenv::dotenv;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use utils::{log::init_async_logger, database::initialize_pool};
-use finance_service::{start_finance_services, update_all_previous_closes, types::{FinanceHealth, FinanceState}};
+use finance_service::{start_finance_services, update_all_previous_closes, types::{FinanceHealth, FinanceState}, log::init_async_logger, database::initialize_pool, database::PgPool};
 
 #[derive(Clone)]
 struct AppState {
     health: Arc<Mutex<FinanceHealth>>,
-    pool: Arc<utils::database::PgPool>,
+    pool: Arc<PgPool>,
 }
 
 #[tokio::main]

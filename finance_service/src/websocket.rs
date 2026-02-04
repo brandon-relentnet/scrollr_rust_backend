@@ -4,7 +4,7 @@ use reqwest::Client;
 use tokio::{net::TcpStream, sync::{Mutex, RwLock}, time};
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::protocol::Message};
 use futures_util::{SinkExt, StreamExt, stream::{self, SplitSink, SplitStream, iter}};
-use utils::{database::{PgPool, finance::{DatabaseTradeData, Utc, get_trades, insert_symbol, update_previous_close, update_trade}}, log::{error, info, warn}};
+use crate::{database::{PgPool, DatabaseTradeData, Utc, get_trades, insert_symbol, update_previous_close, update_trade}, log::{error, info, warn}};
 
 use crate::{get_quote, types::{FinanceHealth, TradeData, TradeUpdate, WebSocketState}};
 

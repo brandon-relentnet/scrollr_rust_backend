@@ -6,8 +6,11 @@ use secrecy::SecretString;
 pub use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
-use utils::{database::{PgPool, initialize_pool}, log::warn};
+use crate::{database::{PgPool, initialize_pool}, log::warn};
 use yahoo_fantasy::{api::Client, types::Tokens, YahooHealth};
+
+pub mod log;
+pub mod database;
 
 #[derive(Serialize)]
 pub struct ErrorCodeResponse {

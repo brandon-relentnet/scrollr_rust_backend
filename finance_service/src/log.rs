@@ -40,10 +40,11 @@ impl Log for AsyncLogger {
 
         if self.enabled(record.metadata()) {
             let log_entry = format!(
-                "[{}] {} {} {locator} - {}\n",
+                "[{}] {} {} {} - {}\n",
                 chrono::Local::now(),
                 record.level(),
                 record.target(),
+                locator,
                 record.args()
             );
 
@@ -56,11 +57,11 @@ impl Log for AsyncLogger {
 
 pub async fn log_writer_task(mut receiver: mpsc::Receiver<LogMessage>, log_file_path: String) {
     if let Err(e) = fs::create_dir_all(&log_file_path) {
-        error!("Failed to create log directory: {e}");
+        error!("Failed to create log directory: {}", e);
         warn!("Continuing, logs will not be stored...");
     }
     
-    let mut finance = match File::create(format!("{log_file_path}/finance.log")) {
+    let mut finance = match File::create(format!("{}/finance.log", log_file_path)) {
         Ok(f) => f,
         Err(e) => {
             eprintln!("Fatal: Could not create log file at {:?}: {}", "finance.log", e);
@@ -68,57 +69,13 @@ pub async fn log_writer_task(mut receiver: mpsc::Receiver<LogMessage>, log_file_
         }
     };
 
-    let mut sports = match File::create(format!("{log_file_path}/sports.log")) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Fatal: Could not create log file at {:?}: {}", "sports.log", e);
-            return;
-        }
-    };
-
-    let mut fantasy = match File::create(format!("{log_file_path}/fantasy.log")) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Fatal: Could not create log file at {:?}: {}", "fantasy.log", e);
-            return;
-        }
-    };
-
-    let mut backend = match File::create(format!("{log_file_path}/backend.log")) {
-        Ok(f) => f,
-        Err(e) => {
-            eprintln!("Fatal: Could not create log file at {:?}: {}", "backend.log", e);
-            return;
-        }
-    };
-
     println!("Starting async log writer task...");
 
     while let Some(msg) = receiver.recv().await {
-        println!("{msg}");
+        println!("{}", msg); 
 
-        if msg.contains("finance_service") {
-            if let Err(e) = finance.write_all(msg.as_bytes()) {
-                eprintln!("Error writing log data to disk: {}", e);
-            }
-        }
-
-        if msg.contains("sports_service") {
-            if let Err(e) = sports.write_all(msg.as_bytes()) {
-                eprintln!("Error writing log data to disk: {}", e);
-            }
-        }
-
-        if msg.contains("yahoo_fantasy") {
-            if let Err(e) = fantasy.write_all(msg.as_bytes()) {
-                eprintln!("Error writing log data to disk: {}", e);
-            }
-        }
-
-        if msg.contains("scrollr_backend") {
-            if let Err(e) = backend.write_all(msg.as_bytes()) {
-                eprintln!("Error writing log data to disk: {}", e);
-            }
+        if let Err(e) = finance.write_all(msg.as_bytes()) {
+            eprintln!("Error writing log data to disk: {}", e);
         }
     }
 

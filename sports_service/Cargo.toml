@@ -11,5 +11,6 @@ reqwest = { version = "0.12", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 axum = { version = "0.8", features = ["macros", "json"] }
 dotenv = "0.15"
-
-utils = { path = "../utils", features = ["sports"]}
+log = "0.4"
+anyhow = "1.0"
+sqlx = { version = "0.8", features = ["runtime-tokio", "tls-rustls", "postgres", "macros", "chrono"] }
